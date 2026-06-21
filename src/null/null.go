@@ -35,8 +35,16 @@ func (d data) ToFloat64() float64 {
 	return 0
 }
 
+func (d data) ToInt64() int64 {
+	return 0
+}
+
 func (d data) IsNull() bool {
 	return true
+}
+
+func (d data) IsZero() bool {
+	return false
 }
 
 func notImplemented(methodName string) Result.Interface {
@@ -69,6 +77,26 @@ func (d data) Abs() Result.Interface {
 
 func (d data) Neg() Result.Interface {
 	return notImplemented(`Neg`)
+}
+
+func (d data) Floor() Result.Interface {
+	return notImplemented(`Floor`)
+}
+
+func (d data) Ceil() Result.Interface {
+	return notImplemented(`Ceil`)
+}
+
+func (d data) Round() Result.Interface {
+	return notImplemented(`Round`)
+}
+
+func (d data) Power(int) Result.Interface {
+	return notImplemented(`Power`)
+}
+
+func (d data) Sqrt() Result.Interface {
+	return notImplemented(`Sqrt`)
 }
 
 func (d data) Equal(other BigFloat.Interface) bool {

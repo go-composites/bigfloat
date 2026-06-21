@@ -23,6 +23,10 @@ var _ = ginkgo.Describe("NullBigFloat", func() {
 	ginkgo.It("converts to zero values", func() {
 		gomega.Expect(n.ToFloat64()).To(gomega.Equal(0.0))
 		gomega.Expect(n.ToGoString()).To(gomega.Equal(``))
+		gomega.Expect(n.ToInt64()).To(gomega.Equal(int64(0)))
+	})
+	ginkgo.It("reports a non-zero zero-test", func() {
+		gomega.Expect(n.IsZero()).To(gomega.BeFalse())
 	})
 
 	ginkgo.It("Add returns an error result", func() {
@@ -54,6 +58,31 @@ var _ = ginkgo.Describe("NullBigFloat", func() {
 		r := n.Neg()
 		gomega.Expect(r.HasError()).To(gomega.BeTrue())
 		gomega.Expect(r.Error().Message()).To(gomega.ContainSubstring("Neg"))
+	})
+	ginkgo.It("Floor returns an error result", func() {
+		r := n.Floor()
+		gomega.Expect(r.HasError()).To(gomega.BeTrue())
+		gomega.Expect(r.Error().Message()).To(gomega.ContainSubstring("Floor"))
+	})
+	ginkgo.It("Ceil returns an error result", func() {
+		r := n.Ceil()
+		gomega.Expect(r.HasError()).To(gomega.BeTrue())
+		gomega.Expect(r.Error().Message()).To(gomega.ContainSubstring("Ceil"))
+	})
+	ginkgo.It("Round returns an error result", func() {
+		r := n.Round()
+		gomega.Expect(r.HasError()).To(gomega.BeTrue())
+		gomega.Expect(r.Error().Message()).To(gomega.ContainSubstring("Round"))
+	})
+	ginkgo.It("Power returns an error result", func() {
+		r := n.Power(2)
+		gomega.Expect(r.HasError()).To(gomega.BeTrue())
+		gomega.Expect(r.Error().Message()).To(gomega.ContainSubstring("Power"))
+	})
+	ginkgo.It("Sqrt returns an error result", func() {
+		r := n.Sqrt()
+		gomega.Expect(r.HasError()).To(gomega.BeTrue())
+		gomega.Expect(r.Error().Message()).To(gomega.ContainSubstring("Sqrt"))
 	})
 	ginkgo.It("Equal is true only against another null", func() {
 		gomega.Expect(n.Equal(NullBigFloat.New())).To(gomega.BeTrue())

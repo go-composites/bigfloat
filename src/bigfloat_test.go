@@ -24,13 +24,20 @@ type foreign struct{ s string }
 
 func (f foreign) ToGoString() string                    { return f.s }
 func (foreign) ToFloat64() float64                      { return 0 }
+func (foreign) ToInt64() int64                          { return 0 }
 func (foreign) IsNull() bool                            { return false }
+func (foreign) IsZero() bool                            { return false }
 func (foreign) Add(BigFloat.Interface) Result.Interface { return nil }
 func (foreign) Sub(BigFloat.Interface) Result.Interface { return nil }
 func (foreign) Mul(BigFloat.Interface) Result.Interface { return nil }
 func (foreign) Div(BigFloat.Interface) Result.Interface { return nil }
 func (foreign) Abs() Result.Interface                   { return nil }
 func (foreign) Neg() Result.Interface                   { return nil }
+func (foreign) Floor() Result.Interface                 { return nil }
+func (foreign) Ceil() Result.Interface                  { return nil }
+func (foreign) Round() Result.Interface                 { return nil }
+func (foreign) Power(int) Result.Interface              { return nil }
+func (foreign) Sqrt() Result.Interface                  { return nil }
 func (foreign) Equal(BigFloat.Interface) bool           { return false }
 func (foreign) LessThan(BigFloat.Interface) bool        { return false }
 func (foreign) GreaterThan(BigFloat.Interface) bool     { return false }
@@ -170,6 +177,106 @@ var _ = ginkgo.Describe("BigFloat", func() {
 		})
 	})
 
+	ginkgo.Describe("integer conversion", func() {
+		ginkgo.It("truncates a positive value toward zero", func() {
+			gomega.Expect(BigFloat.FromFloat64(2.9).ToInt64()).To(gomega.Equal(int64(2)))
+		})
+		ginkgo.It("truncates a negative value toward zero", func() {
+			gomega.Expect(BigFloat.FromFloat64(-2.9).ToInt64()).To(gomega.Equal(int64(-2)))
+		})
+	})
+
+	ginkgo.Describe("zero test", func() {
+		ginkgo.It("reports a zero value as zero", func() {
+			gomega.Expect(BigFloat.FromFloat64(0).IsZero()).To(gomega.BeTrue())
+		})
+		ginkgo.It("reports a non-zero value as not zero", func() {
+			gomega.Expect(BigFloat.FromFloat64(0.5).IsZero()).To(gomega.BeFalse())
+		})
+	})
+
+	ginkgo.Describe("rounding", func() {
+		ginkgo.It("floors a positive fractional value", func() {
+			gomega.Expect(payloadOf(BigFloat.FromFloat64(2.5).Floor()).ToFloat64()).
+				To(gomega.Equal(2.0))
+		})
+		ginkgo.It("floors a negative fractional value", func() {
+			gomega.Expect(payloadOf(BigFloat.FromFloat64(-2.5).Floor()).ToFloat64()).
+				To(gomega.Equal(-3.0))
+		})
+		ginkgo.It("leaves an integer unchanged under floor", func() {
+			gomega.Expect(payloadOf(BigFloat.FromFloat64(4).Floor()).ToFloat64()).
+				To(gomega.Equal(4.0))
+		})
+		ginkgo.It("ceils a positive fractional value", func() {
+			gomega.Expect(payloadOf(BigFloat.FromFloat64(2.5).Ceil()).ToFloat64()).
+				To(gomega.Equal(3.0))
+		})
+		ginkgo.It("ceils a negative fractional value", func() {
+			gomega.Expect(payloadOf(BigFloat.FromFloat64(-2.5).Ceil()).ToFloat64()).
+				To(gomega.Equal(-2.0))
+		})
+		ginkgo.It("leaves an integer unchanged under ceil", func() {
+			gomega.Expect(payloadOf(BigFloat.FromFloat64(4).Ceil()).ToFloat64()).
+				To(gomega.Equal(4.0))
+		})
+		ginkgo.It("rounds a positive half away from zero", func() {
+			gomega.Expect(payloadOf(BigFloat.FromFloat64(2.5).Round()).ToFloat64()).
+				To(gomega.Equal(3.0))
+		})
+		ginkgo.It("rounds a negative half away from zero", func() {
+			gomega.Expect(payloadOf(BigFloat.FromFloat64(-2.5).Round()).ToFloat64()).
+				To(gomega.Equal(-3.0))
+		})
+		ginkgo.It("rounds toward the nearer integer", func() {
+			gomega.Expect(payloadOf(BigFloat.FromFloat64(2.4).Round()).ToFloat64()).
+				To(gomega.Equal(2.0))
+			gomega.Expect(payloadOf(BigFloat.FromFloat64(-2.4).Round()).ToFloat64()).
+				To(gomega.Equal(-2.0))
+		})
+	})
+
+	ginkgo.Describe("power", func() {
+		ginkgo.It("raises to a positive exponent", func() {
+			gomega.Expect(payloadOf(BigFloat.FromFloat64(2).Power(10)).ToFloat64()).
+				To(gomega.Equal(1024.0))
+		})
+		ginkgo.It("raises to a zero exponent", func() {
+			gomega.Expect(payloadOf(BigFloat.FromFloat64(7).Power(0)).ToFloat64()).
+				To(gomega.Equal(1.0))
+		})
+		ginkgo.It("treats 0**0 as 1", func() {
+			gomega.Expect(payloadOf(BigFloat.FromFloat64(0).Power(0)).ToFloat64()).
+				To(gomega.Equal(1.0))
+		})
+		ginkgo.It("raises to a negative exponent as the reciprocal", func() {
+			gomega.Expect(payloadOf(BigFloat.FromFloat64(2).Power(-2)).ToFloat64()).
+				To(gomega.Equal(0.25))
+		})
+		ginkgo.It("errors on a zero base with a negative exponent", func() {
+			r := BigFloat.FromFloat64(0).Power(-1)
+			gomega.Expect(r.HasError()).To(gomega.BeTrue())
+			gomega.Expect(r.Error().Message()).To(gomega.Equal("division by zero"))
+		})
+	})
+
+	ginkgo.Describe("square root", func() {
+		ginkgo.It("takes the root of a perfect square", func() {
+			gomega.Expect(payloadOf(BigFloat.FromFloat64(9).Sqrt()).ToFloat64()).
+				To(gomega.Equal(3.0))
+		})
+		ginkgo.It("takes the root of a non-square", func() {
+			r := payloadOf(BigFloat.FromFloat64(2).Sqrt())
+			gomega.Expect(r.ToFloat64()).To(gomega.BeNumerically("~", 1.4142135623730951, 1e-15))
+		})
+		ginkgo.It("errors on a negative value", func() {
+			r := BigFloat.FromFloat64(-1).Sqrt()
+			gomega.Expect(r.HasError()).To(gomega.BeTrue())
+			gomega.Expect(r.Error().Message()).
+				To(gomega.Equal("square root of a negative number"))
+		})
+	})
+
 	ginkgo.Describe("inspection", func() {
 		ginkgo.It("renders a BigFloat", func() {
 			gomega.Expect(BigFloat.FromFloat64(6).Inspect()).
@@ -191,6 +298,15 @@ var _ = ginkgo.Describe("BigFloat", func() {
 			gomega.Expect(n.Div(n).HasError()).To(gomega.BeTrue())
 			gomega.Expect(n.Abs().HasError()).To(gomega.BeTrue())
 			gomega.Expect(n.Neg().HasError()).To(gomega.BeTrue())
+			gomega.Expect(n.Floor().HasError()).To(gomega.BeTrue())
+			gomega.Expect(n.Ceil().HasError()).To(gomega.BeTrue())
+			gomega.Expect(n.Round().HasError()).To(gomega.BeTrue())
+			gomega.Expect(n.Power(2).HasError()).To(gomega.BeTrue())
+			gomega.Expect(n.Sqrt().HasError()).To(gomega.BeTrue())
+		})
+		ginkgo.It("reports zero conversions and a non-zero zero-test", func() {
+			gomega.Expect(n.ToInt64()).To(gomega.Equal(int64(0)))
+			gomega.Expect(n.IsZero()).To(gomega.BeFalse())
 		})
 		ginkgo.It("compares as a Null-Object", func() {
 			gomega.Expect(n.Equal(BigFloat.Null())).To(gomega.BeTrue())

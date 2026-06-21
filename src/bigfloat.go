@@ -27,13 +27,20 @@ rather than panics, and they never return a bare nil.
 type Interface interface {
 	ToGoString() string
 	ToFloat64() float64
+	ToInt64() int64
 	IsNull() bool
+	IsZero() bool
 	Add(Interface) Result.Interface
 	Sub(Interface) Result.Interface
 	Mul(Interface) Result.Interface
 	Div(Interface) Result.Interface
 	Abs() Result.Interface
 	Neg() Result.Interface
+	Floor() Result.Interface
+	Ceil() Result.Interface
+	Round() Result.Interface
+	Power(int) Result.Interface
+	Sqrt() Result.Interface
 	Equal(Interface) bool
 	LessThan(Interface) bool
 	GreaterThan(Interface) bool
@@ -122,12 +129,30 @@ func (d data) ToFloat64() float64 {
 }
 
 /*
+ToInt64 returns the value truncated toward zero as a Go int64.
+
+It follows math/big.Float.Int64: when the value does not fit in an int64 the
+result saturates at the int64 bounds.
+*/
+func (d data) ToInt64() int64 {
+	i, _ := d.value.Int64()
+	return i
+}
+
+/*
 IsNull reports whether the BigFloat is the Null-Object variant.
 
 A concrete BigFloat is never null.
 */
 func (d data) IsNull() bool {
 	return false
+}
+
+/*
+IsZero reports whether the value is exactly zero.
+*/
+func (d data) IsZero() bool {
+	return d.value.Sign() == 0
 }
 
 /*
@@ -199,6 +224,66 @@ func (d data) Neg() Result.Interface {
 }
 
 /*
+Floor returns a Result whose payload is the largest integer less than or equal
+to the receiver.
+*/
+func (d data) Floor() Result.Interface {
+	return payload(floorFloat(d.value))
+}
+
+/*
+Ceil returns a Result whose payload is the smallest integer greater than or
+equal to the receiver.
+*/
+func (d data) Ceil() Result.Interface {
+	return payload(ceilFloat(d.value))
+}
+
+/*
+Round returns a Result whose payload is the receiver rounded to the nearest
+integer, with halves rounded away from zero.
+*/
+func (d data) Round() Result.Interface {
+	return payload(roundFloat(d.value))
+}
+
+/*
+Power returns a Result whose payload is the receiver raised to the integer
+power n.
+
+A negative exponent yields the reciprocal; 0**0 is 1. When the base is zero and
+the exponent is negative the Result carries an Error ("division by zero")
+instead of a payload — it never panics and never returns nil.
+*/
+func (d data) Power(n int) Result.Interface {
+	if n < 0 && d.value.Sign() == 0 {
+		return Result.New(
+			Result.WithError(
+				Error.New("division by zero"),
+			),
+		)
+	}
+	return payload(powFloat(d.value, n))
+}
+
+/*
+Sqrt returns a Result whose payload is the square root of the receiver.
+
+A negative receiver yields a Result carrying an Error ("square root of a
+negative number") instead of a payload — it never panics and never returns nil.
+*/
+func (d data) Sqrt() Result.Interface {
+	if d.value.Sign() < 0 {
+		return Result.New(
+			Result.WithError(
+				Error.New("square root of a negative number"),
+			),
+		)
+	}
+	return payload(newFloat().Sqrt(d.value))
+}
+
+/*
 Equal reports whether the receiver and other hold the same value.
 */
 func (d data) Equal(other Interface) bool {
@@ -249,17 +334,92 @@ func nullNotImplemented(methodName string) Result.Interface {
 
 func (nullData) ToGoString() string             { return `` }
 func (nullData) ToFloat64() float64             { return 0 }
+func (nullData) ToInt64() int64                 { return 0 }
 func (nullData) IsNull() bool                   { return true }
+func (nullData) IsZero() bool                   { return false }
 func (nullData) Add(Interface) Result.Interface { return nullNotImplemented(`Add`) }
 func (nullData) Sub(Interface) Result.Interface { return nullNotImplemented(`Sub`) }
 func (nullData) Mul(Interface) Result.Interface { return nullNotImplemented(`Mul`) }
 func (nullData) Div(Interface) Result.Interface { return nullNotImplemented(`Div`) }
 func (nullData) Abs() Result.Interface          { return nullNotImplemented(`Abs`) }
 func (nullData) Neg() Result.Interface          { return nullNotImplemented(`Neg`) }
+func (nullData) Floor() Result.Interface        { return nullNotImplemented(`Floor`) }
+func (nullData) Ceil() Result.Interface         { return nullNotImplemented(`Ceil`) }
+func (nullData) Round() Result.Interface        { return nullNotImplemented(`Round`) }
+func (nullData) Power(int) Result.Interface     { return nullNotImplemented(`Power`) }
+func (nullData) Sqrt() Result.Interface         { return nullNotImplemented(`Sqrt`) }
 func (nullData) Equal(other Interface) bool     { return other.IsNull() }
 func (nullData) LessThan(Interface) bool        { return false }
 func (nullData) GreaterThan(Interface) bool     { return false }
 func (nullData) Inspect() String                { return `<NullBigFloat>` }
+
+// floorFloat returns a fresh big.Float holding the largest integer less than
+// or equal to value.
+func floorFloat(value *big.Float) *big.Float {
+	truncated, frac := truncate(value)
+	if frac && value.Sign() < 0 {
+		truncated.Sub(truncated, newFloat().SetInt64(1))
+	}
+	return truncated
+}
+
+// ceilFloat returns a fresh big.Float holding the smallest integer greater
+// than or equal to value.
+func ceilFloat(value *big.Float) *big.Float {
+	truncated, frac := truncate(value)
+	if frac && value.Sign() > 0 {
+		truncated.Add(truncated, newFloat().SetInt64(1))
+	}
+	return truncated
+}
+
+// roundFloat returns a fresh big.Float holding value rounded to the nearest
+// integer, halves away from zero.
+func roundFloat(value *big.Float) *big.Float {
+	half := newFloat().SetFloat64(0.5)
+	if value.Sign() < 0 {
+		shifted := newFloat().Sub(value, half)
+		result, _ := truncate(shifted)
+		return result
+	}
+	shifted := newFloat().Add(value, half)
+	result, _ := truncate(shifted)
+	return result
+}
+
+// truncate returns a fresh big.Float holding value truncated toward zero, and
+// whether value had a fractional part.
+func truncate(value *big.Float) (*big.Float, bool) {
+	intPart, _ := value.Int(nil)
+	truncated := newFloat().SetInt(intPart)
+	frac := truncated.Cmp(value) != 0
+	return truncated, frac
+}
+
+// powFloat returns a fresh big.Float holding base raised to the integer power
+// n via repeated multiplication. A negative n yields the reciprocal; n == 0
+// yields 1.
+func powFloat(base *big.Float, n int) *big.Float {
+	exp := n
+	if exp < 0 {
+		exp = -exp
+	}
+	result := newFloat().SetInt64(1)
+	factor := newFloat().Set(base)
+	for exp > 0 {
+		if exp&1 == 1 {
+			result.Mul(result, factor)
+		}
+		exp >>= 1
+		if exp > 0 {
+			factor.Mul(factor, factor)
+		}
+	}
+	if n < 0 {
+		return newFloat().Quo(newFloat().SetInt64(1), result)
+	}
+	return result
+}
 
 // payload wraps a fresh big.Float in a success Result.
 func payload(value *big.Float) Result.Interface {
